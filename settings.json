@@ -5,7 +5,7 @@
   "label_text": "Поточний час",
   "label_color": "#7CFF62",
   "time_color": "#F1FFF0",
-  "font_family": "Bahnschrift",
+  "font_family": "Cascadia Mono",
   "label_font_size": 26,
   "time_font_size": 120,
   "time_format": "%H:%M:%S"

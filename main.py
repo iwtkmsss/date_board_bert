@@ -17,7 +17,7 @@ DEFAULT_SETTINGS = {
     "label_text": "Поточний час",
     "label_color": "#7CFF62",
     "time_color": "#F1FFF0",
-    "font_family": "Bahnschrift",
+    "font_family": "Cascadia Mono",
     "label_font_size": 26,
     "time_font_size": 120,
     "time_format": "%H:%M:%S",
@@ -41,9 +41,14 @@ LOGO_PADDING_X = 28
 LOGO_PADDING_Y = 24
 LOGO_MAX_WIDTH = 280
 LOGO_MAX_HEIGHT = 130
-GRID_SPACING = 96
+MIN_GRID_SPACING = 72
+MAX_GRID_SPACING = 128
 GRID_COLOR = "#1A2024"
 GRID_ACCENT_COLOR = "#222A2F"
+DASHBOARD_LABEL_PADDING_X = 10
+DASHBOARD_LABEL_PADDING_Y = 8
+GRID_LABEL_BG_PADDING_X = 10
+GRID_LABEL_BG_PADDING_Y = 6
 PANEL_BG = "#171C20"
 PANEL_BORDER = "#2A3238"
 ACCENT_COLOR = "#7CFF62"
@@ -57,6 +62,11 @@ VISUAL_CENTER_RATIO = 0.35
 VISUAL_CENTER_MIN_OFFSET = 28
 VISUAL_CENTER_MAX_OFFSET = 96
 DATE_COLOR = "#93A19A"
+WORKDAY_START_HOUR = 9
+WORKDAY_END_HOUR = 18
+WORK_STATUS_COLOR = "#AFC0B7"
+MIN_WORK_STATUS_FONT_SIZE = 12
+MAX_WORK_STATUS_FONT_SIZE = 30
 UA_MONTHS = (
     "січня",
     "лютого",
@@ -72,23 +82,22 @@ UA_MONTHS = (
     "грудня",
 )
 FONT_CANDIDATES = (
-    "Bahnschrift",
-    "Cascadia Mono",
-    "Segoe UI",
-    "Consolas",
-)
-TIME_FONT_CANDIDATES = (
     "Cascadia Mono",
     "Consolas",
     "Lucida Console",
     "Courier New",
+    "Bahnschrift",
 )
 ASSETS_DIRNAME = "assets"
-LOGO_FILENAME = "logo.png"
+LOGO_FILENAMES = (
+    "logo.png",
+    "logo.ico",
+)
 ICON_FILENAMES = (
+    "logo.ico",
     "icon.ico",
     "icon.png",
-    LOGO_FILENAME,
+    "logo.png",
 )
 
 
@@ -125,11 +134,11 @@ class ClockApp:
         self.logo_source: Image.Image | None = None
         self.logo_photo: ImageTk.PhotoImage | None = None
         self.icon_photo: ImageTk.PhotoImage | None = None
-        self.font_family = self._resolve_font_family(self.settings["font_family"])
-        self.time_font_family = self._resolve_font_family(
-            TIME_FONT_CANDIDATES[0],
-            TIME_FONT_CANDIDATES,
+        self.font_family = self._resolve_font_family(
+            self.settings["font_family"],
+            FONT_CANDIDATES,
         )
+        self.time_font_family = self.font_family
         self.time_display_sample = self._build_time_display_sample()
 
         self.root.title(self.settings["window_title"])
@@ -243,6 +252,8 @@ class ClockApp:
 
         self.label_var = tk.StringVar(value=self.settings["label_text"])
         self.time_var = tk.StringVar()
+        self.work_status_text_var = tk.StringVar()
+        self.work_status_time_var = tk.StringVar()
         self.date_var = tk.StringVar()
 
         self.label_widget = tk.Label(
@@ -271,6 +282,27 @@ class ClockApp:
             justify="center",
         )
 
+        self.work_status_frame = tk.Frame(
+            self.panel_body,
+            bg=PANEL_BG,
+        )
+
+        self.work_status_text_widget = tk.Label(
+            self.work_status_frame,
+            textvariable=self.work_status_text_var,
+            fg=WORK_STATUS_COLOR,
+            bg=PANEL_BG,
+            justify="center",
+        )
+
+        self.work_status_time_widget = tk.Label(
+            self.work_status_frame,
+            textvariable=self.work_status_time_var,
+            fg=WORK_STATUS_COLOR,
+            bg=PANEL_BG,
+            justify="center",
+        )
+
         self.panel_footer = tk.Label(
             self.panel_body,
             text="BERT COMPANY // LOCAL NODE DISPLAY",
@@ -289,6 +321,9 @@ class ClockApp:
 
         self._update_label_visibility()
         self.time_widget.pack()
+        self.work_status_frame.pack(pady=(8, 0))
+        self.work_status_text_widget.pack(side="left")
+        self.work_status_time_widget.pack(side="left", padx=(8, 0))
         self.date_widget.pack(pady=(12, 0))
         self.panel_footer.pack(pady=(18, 0))
         self.controls_hint.pack(pady=(HINT_BOTTOM_OFFSET, 0))
@@ -300,7 +335,7 @@ class ClockApp:
             self.label_widget.pack_forget()
 
     def _load_logo_source(self) -> None:
-        logo_path = self._resolve_asset_path(LOGO_FILENAME)
+        logo_path = self._resolve_first_asset_path(LOGO_FILENAMES)
         if not logo_path:
             self.logo_label.configure(image="", text="")
             return
@@ -370,36 +405,44 @@ class ClockApp:
     def _draw_background(self) -> None:
         width = max(self.main_frame.winfo_width(), 1)
         height = max(self.main_frame.winfo_height(), 1)
+        grid_spacing_x = self._calculate_grid_spacing(width, 14)
+        grid_spacing_y = self._calculate_grid_spacing(height, 8)
+        grid_offset_x = (width % grid_spacing_x) // 2
+        grid_offset_y = (height % grid_spacing_y) // 2
+        dashboard_label_size = self._clamp_font_size(min(width / 118, height / 82), 9, 14)
 
         self.bg_canvas.delete("grid")
 
-        for x in range(0, width, GRID_SPACING):
-            color = GRID_ACCENT_COLOR if x % (GRID_SPACING * 3) == 0 else GRID_COLOR
+        for x in range(grid_offset_x, width + grid_spacing_x, grid_spacing_x):
+            color = GRID_ACCENT_COLOR if ((x - grid_offset_x) // grid_spacing_x) % 3 == 0 else GRID_COLOR
             self.bg_canvas.create_line(x, 0, x, height, fill=color, tags="grid")
 
-        for y in range(0, height, GRID_SPACING):
-            color = GRID_ACCENT_COLOR if y % (GRID_SPACING * 3) == 0 else GRID_COLOR
+        for y in range(grid_offset_y, height + grid_spacing_y, grid_spacing_y):
+            color = GRID_ACCENT_COLOR if ((y - grid_offset_y) // grid_spacing_y) % 3 == 0 else GRID_COLOR
             self.bg_canvas.create_line(0, y, width, y, fill=color, tags="grid")
 
-        self.bg_canvas.create_line(0, 92, width, 92, fill=GRID_COLOR, tags="grid")
-        self.bg_canvas.create_rectangle(
-            18,
-            18,
-            width - 18,
-            height - 18,
-            outline="#20272C",
-            width=1,
-            tags="grid",
-        )
-        self.bg_canvas.create_text(
-            32,
-            height - 28,
-            anchor="w",
+        dashboard_label = self.bg_canvas.create_text(
+            DASHBOARD_LABEL_PADDING_X,
+            height - DASHBOARD_LABEL_PADDING_Y,
+            anchor="sw",
             text="DEV-OPS CLOCK DASHBOARD",
             fill=TEXT_MUTED,
-            font=(self.font_family, 11, "normal"),
+            font=(self.font_family, dashboard_label_size, "bold"),
             tags="grid",
         )
+        label_bounds = self.bg_canvas.bbox(dashboard_label)
+        if label_bounds is not None:
+            left, top, right, bottom = label_bounds
+            label_bg = self.bg_canvas.create_rectangle(
+                left - GRID_LABEL_BG_PADDING_X,
+                top - GRID_LABEL_BG_PADDING_Y,
+                right + GRID_LABEL_BG_PADDING_X,
+                bottom + GRID_LABEL_BG_PADDING_Y,
+                fill=self.settings["background_color"],
+                outline="",
+                tags="grid",
+            )
+            self.bg_canvas.tag_lower(label_bg, dashboard_label)
 
     def _update_center_block_position(self) -> None:
         self.main_frame.update_idletasks()
@@ -462,6 +505,7 @@ class ClockApp:
         hint_gap = max(10, min(int(HINT_BOTTOM_OFFSET * scale), HINT_BOTTOM_OFFSET))
         badge_pad_x = max(10, min(int(16 * scale), 16))
         badge_pad_y = max(5, min(int(8 * scale), 8))
+        work_status_gap = max(6, min(int(8 * scale), 8))
 
         label_size = self._clamp_font_size(
             self.settings["label_font_size"] * scale,
@@ -478,6 +522,11 @@ class ClockApp:
         badge_size = self._clamp_font_size(14 * scale, 10, 18)
         hint_size = self._clamp_font_size(12 * scale, 9, 15)
         date_size = self._clamp_font_size(18 * scale, 12, 24)
+        work_status_size = self._clamp_font_size(
+            16 * scale,
+            MIN_WORK_STATUS_FONT_SIZE,
+            MAX_WORK_STATUS_FONT_SIZE,
+        )
 
         self.header_frame.grid_configure(
             padx=header_pad_x,
@@ -493,31 +542,38 @@ class ClockApp:
         )
         self.panel_kicker.pack_configure(pady=(0, kicker_gap))
         self.panel_divider.pack_configure(pady=(0, divider_gap))
+        self.work_status_frame.pack_configure(pady=(work_status_gap, 0))
         self.date_widget.pack_configure(pady=(date_gap, 0))
         self.panel_footer.pack_configure(pady=(footer_gap, 0))
         self.controls_hint.pack_configure(pady=(hint_gap, 0))
 
         self.label_widget.configure(
-            font=(self.font_family, label_size, "normal"),
+            font=(self.font_family, label_size, "bold"),
             wraplength=max(220, int(width * 0.65)),
         )
         self.time_widget.configure(
-            font=(self.time_font_family, time_size, "normal"),
+            font=(self.time_font_family, time_size, "bold"),
         )
         self.panel_kicker.configure(
             font=(self.font_family, kicker_size, "bold"),
         )
         self.panel_footer.configure(
-            font=(self.font_family, footer_size, "normal"),
+            font=(self.font_family, footer_size, "bold"),
         )
         self.date_widget.configure(
-            font=(self.font_family, date_size, "normal"),
+            font=(self.font_family, date_size, "bold"),
+        )
+        self.work_status_text_widget.configure(
+            font=(self.time_font_family, work_status_size, "normal"),
+        )
+        self.work_status_time_widget.configure(
+            font=(self.time_font_family, work_status_size, "bold"),
         )
         self.brand_badge.configure(
             font=(self.font_family, badge_size, "bold"),
         )
         self.controls_hint.configure(
-            font=(self.font_family, hint_size, "normal"),
+            font=(self.font_family, hint_size, "bold"),
         )
 
         if self.logo_source is not None:
@@ -527,9 +583,46 @@ class ClockApp:
     def _clamp_font_size(size: float, minimum: int, maximum: int) -> int:
         return max(minimum, min(int(size), maximum))
 
+    @staticmethod
+    def _calculate_grid_spacing(span: int, target_divisions: int) -> int:
+        raw_spacing = max(1, span // max(target_divisions, 1))
+        return max(MIN_GRID_SPACING, min(raw_spacing, MAX_GRID_SPACING))
+
+    @staticmethod
+    def _format_duration(seconds: int) -> str:
+        safe_seconds = max(0, seconds)
+        hours, remainder = divmod(safe_seconds, 3600)
+        minutes, secs = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+    def _build_work_status_parts(self, current_dt: datetime) -> tuple[str, str]:
+        day_start = current_dt.replace(
+            hour=WORKDAY_START_HOUR,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        day_end = current_dt.replace(
+            hour=WORKDAY_END_HOUR,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        if current_dt < day_start:
+            start_delta_seconds = int((day_start - current_dt).total_seconds()) + 1
+            return "До початку робочого дня залишилось:", self._format_duration(start_delta_seconds)
+
+        delta_seconds = int((day_end - current_dt).total_seconds())
+        if delta_seconds > 0:
+            return "До кінця робочого дня залишилось:", self._format_duration(delta_seconds + 1)
+        return "Ви перепрацювали:", self._format_duration(abs(delta_seconds))
+
     def _update_time(self) -> None:
         current_dt = datetime.now()
         self.time_var.set(current_dt.strftime(self.settings["time_format"]))
+        work_status_text, work_status_time = self._build_work_status_parts(current_dt)
+        self.work_status_text_var.set(work_status_text)
+        self.work_status_time_var.set(work_status_time)
         self.date_var.set(self._format_date(current_dt))
         self.root.after(UPDATE_INTERVAL_MS, self._update_time)
 
